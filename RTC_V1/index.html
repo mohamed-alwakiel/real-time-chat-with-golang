@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Go WebSocket Chat</title>
+    <style>
+        body { font-family: sans-serif; padding: 1rem; }
+        #chat { border: 1px solid #ccc; padding: 1rem; height: 300px; overflow-y: auto; }
+        #message { width: 70%; }
+    </style>
+</head>
+<body>
+
+<h2>🟢 Go WebSocket Chat</h2>
+
+<div>
+    <label>👤 Your name:</label>
+    <input type="text" id="username" placeholder="Enter your name" />
+</div>
+
+<div id="chat"></div>
+
+<input type="text" id="message" placeholder="Type a message..." />
+<button onclick="sendMessage()">Send</button>
+
+<script>
+    let socket;
+    let username = "";
+
+    // Connect when user types name
+    document.getElementById("username").addEventListener("blur", () => {
+        username = document.getElementById("username").value.trim();
+        if (!username || socket) return;
+
+        socket = new WebSocket("ws://localhost:8080/ws");
+
+        socket.onopen = () => {
+            logMessage("🔌 Connected to chat!");
+        };
+
+        socket.onmessage = (event) => {
+            logMessage(event.data);
+        };
+
+        socket.onclose = () => {
+            logMessage("❌ Disconnected from server.");
+        };
+    });
+
+    function sendMessage() {
+        const msgInput = document.getElementById("message");
+        const text = msgInput.value.trim();
+        if (text && socket && username) {
+            socket.send(`${username}: ${text}`);
+            msgInput.value = "";
+        }
+    }
+
+    function logMessage(msg) {
+        const chat = document.getElementById("chat");
+        const div = document.createElement("div");
+        div.textContent = msg;
+        chat.appendChild(div);
+        chat.scrollTop = chat.scrollHeight;
+    }
+</script>
+
+</body>
+</html>
