@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bytes"
+	"encoding/json"
 	"github.com/gorilla/websocket"
 	"log"
 	"time"
@@ -22,16 +22,28 @@ const (
 )
 
 type Client struct {
-	hub  *Hub
-	conn *websocket.Conn
-	send chan []byte
+	hub      *Hub
+	conn     *websocket.Conn
+	send     chan []byte
+	username string
 }
 
 // اقرأ رسائل جاية من المتصفح وابعتها للـ hub
 func (c *Client) readPump() {
 	defer func() {
+		// لما العميل يخرج، نبعت رسالة "leave"
+		leaveMsg := Message{
+			Type:   "leave",
+			Sender: c.username,
+		}
+		msgJson, err := json.Marshal(leaveMsg)
+		if err != nil {
+			log.Println("Marshal:", err)
+			return
+		}
+		c.hub.broadcast <- msgJson
 		c.hub.unregister <- c
-		err := c.conn.Close()
+		err = c.conn.Close()
 		if err != nil {
 			log.Println("Read Error : ", err)
 		}
@@ -52,13 +64,49 @@ func (c *Client) readPump() {
 	})
 
 	for {
-		_, message, err := c.conn.ReadMessage()
+		_, rawMessage, err := c.conn.ReadMessage()
 		if err != nil {
 			log.Println("ReadMessage : ", err)
 			break
 		}
-		message = bytes.TrimSpace(message)
-		c.hub.broadcast <- message
+
+		var msg Message
+		err = json.Unmarshal(rawMessage, &msg)
+		if err != nil {
+			log.Println("Unmarshal : ", err)
+			continue
+		}
+
+		// أول رسالة بتكون من نوع join → نحدد اسم المستخدم
+		if msg.Type == "join" && c.username == "" {
+			c.username = msg.Sender
+
+			// نبعِت للجميع إنه دخل
+			joinMsg := Message{
+				Type:   "join",
+				Sender: c.username,
+			}
+
+			msgJson, err := json.Marshal(joinMsg)
+			if err != nil {
+				log.Println("Marshal : ", err)
+				continue
+			}
+			c.hub.broadcast <- msgJson
+			continue
+		}
+
+		// لو الرسالة من نوع chat
+		if msg.Type == "chat" {
+			msg.Sender = c.username
+			finalMsg, err := json.Marshal(msg)
+			if err != nil {
+				log.Println("Marshal : ", err)
+				continue
+			}
+			c.hub.broadcast <- finalMsg
+		}
+
 	}
 }
 
